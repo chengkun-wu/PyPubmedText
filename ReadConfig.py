@@ -33,7 +33,19 @@ def config(sysargv):
 	dbConfig['dbCharset'] = configParser.get('db_connect', 'charset')
 	dbConfig['dbUnicode'] = configParser.get('db_connect', 'useUnicode')
 
-	return opts.corpus, dbConfig
+	dbTables = {}
+	dbTables['MEDLINE'] = configParser.get('db_tables', 'MEDLINE')
+	dbTables['PMC'] = configParser.get('db_tables', 'PMC')
+	dbTables['MESH_MEDLINE'] = configParser.get('db_tables', 'MESH_MEDLINE')
+	dbTables['MESH_PMC'] = configParser.get('db_tables', 'MESH_PMC')
+	dbTables['CORPUS_TEXT_TABLE'] = configParser.get('db_tables','CORPUS_TEXT_TABLE')
+	dbTables['CORPUS_TABLE'] = configParser.get('db_tables','CORPUS_TABLE')
+	dbTables['SUPPL_MESH_TABLE'] = configParser.get('db_tables','SUPPL_MESH_TABLE')
+
+	miscConfigs = {}
+	miscConfigs['email'] = configParser.get('misc', 'email')
+
+	return opts.corpus, dbConfig, dbTables, miscConfigs
 
 config(sys.argv)
 
