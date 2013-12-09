@@ -13,6 +13,7 @@ If you are doing biomedical text-mining using MEDLINE abstracts or PMC articles,
 3. Take commandline arguments for corpus file name and database connection details.
 4. Added ReadConfig module for the configuration in 3. 
 5. PyPubmedText can be imported and used as a module
+6. You need to set up corresponding database tables using the 'create_tables.sql' provided
 
 
 == 2013-12-05
