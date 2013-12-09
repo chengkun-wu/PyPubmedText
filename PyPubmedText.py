@@ -37,17 +37,17 @@ class NcbiArticle:
     	text = self.text_title + self.text_abstract
     	return text
 
-def getArticlesById(idList, articleType, db): 
+def getArticlesById(idList, articleType, db, dbTables): 
 	cur = db.cursor()
 
 	if cur is None:
 		print 'Database connection not valid. Please check'
 
-	tableName = 'shared.articles_medline_2013' # for PubMed articles
-	meshTable = 'shared.mesh_medline_2013'
+	tableName = dbTables['MEDLINE'] # for PubMed articles
+	meshTable = dbTables['MESH_MEDLINE'] 
 	if articleType == 'pmc': # for PMC articles
-		tableName = 'shared.articles_pmc_feb_2013' 
-		meshTable = 'shared.mesh_pmc_2013'
+		tableName = dbTables['PMC']
+		meshTable = dbTables['MESH_PMC']
 
 	artMap = {}
 
@@ -88,7 +88,7 @@ def getArticlesById(idList, articleType, db):
 			mesh_terms = getMesh(medline_citation)
 			article.mesh_terms = '|'.join(mesh_terms)
 			article.supplMesh = '|'.join(getSupplMesh(medline_citation))
-			article.affiliation = getAffilication(medline_citation)
+			article.affiliation = getAffiliation(medline_citation)
 		else:
 			unicode_cnt = unicode_cnt + 1
 			continue
@@ -173,7 +173,7 @@ def getSupplMesh(medline_citation):
 
 	return supplMesh
 
-def getAffilication(medline_citation):
+def getAffiliation(medline_citation):
 	affiliation = ''
 
 	if 'Affiliation' not in medline_citation['MedlineCitation']['Article']:
@@ -181,7 +181,7 @@ def getAffilication(medline_citation):
 	else:
 		return medline_citation['MedlineCitation']['Article']['Affiliation']
 
-def getArticlesFromPubmed(idList):
+def getArticlesFromPubmed(idList, email):
 	artMap = {}
 	batch_size = 200
 
@@ -192,7 +192,7 @@ def getArticlesFromPubmed(idList):
 	for sublist in [idList[start:start + batch_size] for start in range(0, len(idList), batch_size)]:
 		#Now retrieving the articles from PubMed (using PMIDs in the sublist)
 
-		Entrez.email = "chengkun.wu@manchester.ac.uk"
+		Entrez.email = email
 		handle=Entrez.efetch(db='pubmed',id=sublist, retmode='xml')
 
 		records = Entrez.read(handle)
@@ -302,7 +302,7 @@ def getArticlesFromPubmed(idList):
 	print len(artMap), 'records fetched from PubMed in total.'
 	return artMap
 
-def insert2DB(artMap, db):
+def insert2DB(artMap, db, dbTables):
 	insert_cnt = 0
 	supplMesh_cnt = 0
 	dbCur = db.cursor()
@@ -314,12 +314,12 @@ def insert2DB(artMap, db):
 		article = artMap[pmid]
 
 
-		insert_sql = """REPLACE into prj_mjkijcw2.tc_text(id_ext, text_title, text_body, xml, text_abstract, authors, date, article_type, mesh_terms, journal, affiliation) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)"""
+		insert_sql = 'REPLACE into ' + dbTables['CORPUS_TEXT_TABLE'] + """ (id_ext, text_title, text_body, xml, text_abstract, authors, date, article_type, mesh_terms, journal, affiliation) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)"""
 
 		try:
 			dbCur.execute(insert_sql, (article.id_ext, article.text_title, article.text_body, article.xml, article.text_abstract, article.authors, article.date, article.pubType, article.mesh_terms, article.journal, article.affiliation))
-		except e:
-			print e.strerr
+		except Exception, err:
+			sys.stderr.write('ERROR: %s\n' % str(err))
 			print 'Error-causing document ID:', pmid
 			exit(-1)
 
@@ -332,7 +332,7 @@ def insert2DB(artMap, db):
 
 		if len(supplMesh) > 0:
 			#Need to insert to a different table
-			supplMesh_sql = 'REPLACE INTO prj_mjkijcw2.tc_supplmesh(id_ext, supplMesh) values(%s,%s)'
+			supplMesh_sql = 'REPLACE INTO ' + dbTables['SUPPL_MESH_TABLE'] + ' (id_ext, supplMesh) values(%s,%s)'
 			dbCur.execute(supplMesh_sql, (pmid, supplMesh))
 			supplMesh_cnt = supplMesh_cnt + 1
 	dbCur.close()
@@ -341,7 +341,7 @@ def insert2DB(artMap, db):
 
 	print 'Insert2DB finished!'
 
-def rebuildCorpus(corpus, db):
+def rebuildCorpus(corpus, db, dbTables, email):
 	pmidList = []
 
 	if type(corpus).__name__ == 'list':
@@ -358,16 +358,16 @@ def rebuildCorpus(corpus, db):
 	
 	dbCur = db.cursor()
 
-	clear_sql = "delete from prj_mjkijcw2.tc_corpus"
+	clear_sql = "delete from %s" % dbTables['CORPUS_TABLE']
 	dbCur.execute(clear_sql)
 	print 'Corpus table cleared. '
 
-	clear_sql = "delete from prj_mjkijcw2.tc_text"
+	clear_sql = "delete from %s" % dbTables['CORPUS_TEXT_TABLE']
 	dbCur.execute(clear_sql)
 	print 'Thyroid cancer text table cleared'
 
 	for pmid in pmidList:
-		insert_sql = "insert into prj_mjkijcw2.tc_corpus (id_ext) values(\'%s\')" % pmid
+		insert_sql = "insert into %s (id_ext) values(\'%s\')" % (dbTables['CORPUS_TABLE'], pmid)
 		dbCur.execute(insert_sql)
 
 	print len(pmidList), 'records inserted to the thyroid cancer corpus'
@@ -376,12 +376,12 @@ def rebuildCorpus(corpus, db):
 
 	print 'Now fetching PubMed articles, from local DB first'
 
-	dbArtMap = getArticlesById(pmidList, 'pubmed', db)
+	dbArtMap = getArticlesById(pmidList, 'pubmed', db, dbTables)
 	noAbstractList = []
 	print len(dbArtMap), 'articles fetched from local database'
 
 #Insert
-	insert2DB(dbArtMap, db)
+	insert2DB(dbArtMap, db, dbTables)
 
 	print 'Now fetching directly from PubMed'
 	waitList = []
@@ -390,11 +390,11 @@ def rebuildCorpus(corpus, db):
 		waitList.append(pmid)
 
 	print len(waitList), 'articles to be fetched from PubMed'
-	artMap = getArticlesFromPubmed(waitList)
-	insert2DB(artMap, db)
+	artMap = getArticlesFromPubmed(waitList, email)
+	insert2DB(artMap, db, dbTables)
 
 if __name__ == "__main__":
-	(corpus, dbConfig) = ReadConfig.config(sys.argv)
+	(corpus, dbConfig, dbTables,micsConfig) = ReadConfig.config(sys.argv)
 
 	db = MySQLdb.connect(host=dbConfig['dbHost'], # your host, usually localhost
 		 user=dbConfig['dbUser'], # your username
@@ -405,6 +405,6 @@ if __name__ == "__main__":
 
 	print 'Database connected.'
 
-	rebuildCorpus(corpus, db)
+	rebuildCorpus(corpus, db, dbTables, micsConfig['email'])
 
 	db.close()
