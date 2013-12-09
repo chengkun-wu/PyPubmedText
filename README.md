@@ -6,6 +6,9 @@ A python wrapper for fetching Pubmed articles
 
 If you are doing biomedical text-mining using MEDLINE abstracts or PMC articles, you might often want to build a corpus of your own. You can maintain a local copy of the MEDLINE baseline. The baseline is updated on yearly bases. You might also want to retrieve the latest. PyPubmedText is a wrapper for such purposes. It's based on the Entrez package of Biopython. 
 
+Usage: python PyPubmedText.py -f corpus.file -c config.ini
+Note: the corpus file is a mandatory input argument. The configuration file is set to be "config.ini" by default. 
+
 == 2013-12-09
 
 1. Fix the bug brought about by unicode. The solution is to check whether a string is in unicode or not, if so, then .encode('utf-8').
