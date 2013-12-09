@@ -4,6 +4,9 @@ from Bio import Medline
 import xml.parsers.expat
 from cStringIO import StringIO
 from ConfigParser import SafeConfigParser
+import optparse
+import ReadConfig
+import sys
 
 class NcbiArticle:
     'Class for PubMed or PMC articles from the local database'
@@ -34,7 +37,9 @@ class NcbiArticle:
     	text = self.text_title + self.text_abstract
     	return text
 
-def getArticlesById(idList, articleType, cur): 
+def getArticlesById(idList, articleType, db): 
+	cur = db.cursor()
+
 	if cur is None:
 		print 'Database connection not valid. Please check'
 
@@ -46,7 +51,6 @@ def getArticlesById(idList, articleType, cur):
 
 	artMap = {}
 
-	cur = db.cursor() 
 	cnt = 0
 	unicode_cnt = 0
 
@@ -76,8 +80,6 @@ def getArticlesById(idList, articleType, cur):
 		article.pages = row[17]
 
 		if article.text_abstract is None or len(article.text_abstract) == 0:
-			if article.text_abstract is None:
-				print id
 			continue
 
 		medline_citation = parseXml(article.xml)
@@ -91,6 +93,11 @@ def getArticlesById(idList, articleType, cur):
 			unicode_cnt = unicode_cnt + 1
 			continue
 
+		for k,v in article.__dict__.items():
+			if not k.startswith("__"):
+				if isinstance(v, unicode):
+					setattr(article, k, v.encode('utf-8'))
+
 		artMap[article.id_ext] = article
 
 		cnt = cnt + 1
@@ -98,8 +105,7 @@ def getArticlesById(idList, articleType, cur):
 		if cnt % 100 == 0:
 			print cnt, ' records processed.'
 
-	db.commit()
-	db.close()
+	cur.close()
 
 	print unicode_cnt, ' records contains unicode'
 
@@ -296,9 +302,13 @@ def getArticlesFromPubmed(idList):
 	print len(artMap), 'records fetched from PubMed in total.'
 	return artMap
 
-def insert2DB(artMap, dbCur):
+def insert2DB(artMap, db):
 	insert_cnt = 0
 	supplMesh_cnt = 0
+	dbCur = db.cursor()
+
+	if dbCur is None:
+		print 'Database connection not valid. Please check'
 
 	for pmid in artMap.keys():
 		article = artMap[pmid]
@@ -306,7 +316,12 @@ def insert2DB(artMap, dbCur):
 
 		insert_sql = """REPLACE into prj_mjkijcw2.tc_text(id_ext, text_title, text_body, xml, text_abstract, authors, date, article_type, mesh_terms, journal, affiliation) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)"""
 
-		dbCur.execute(insert_sql, (article.id_ext, article.text_title, article.text_body, article.xml, article.text_abstract, article.authors, article.date, article.pubType, article.mesh_terms, article.journal, article.affiliation))
+		try:
+			dbCur.execute(insert_sql, (article.id_ext, article.text_title, article.text_body, article.xml, article.text_abstract, article.authors, article.date, article.pubType, article.mesh_terms, article.journal, article.affiliation))
+		except e:
+			print e.strerr
+			print 'Error-causing document ID:', pmid
+			exit(-1)
 
 		insert_cnt = insert_cnt + 1
 
@@ -320,12 +335,13 @@ def insert2DB(artMap, dbCur):
 			supplMesh_sql = 'REPLACE INTO prj_mjkijcw2.tc_supplmesh(id_ext, supplMesh) values(%s,%s)'
 			dbCur.execute(supplMesh_sql, (pmid, supplMesh))
 			supplMesh_cnt = supplMesh_cnt + 1
+	dbCur.close()
 
 	print supplMesh_cnt, 'supplementary concepts found'
 
 	print 'Insert2DB finished!'
 
-def rebuildCorpus(corpus, dbCur):
+def rebuildCorpus(corpus, db):
 	pmidList = []
 
 	if type(corpus).__name__ == 'list':
@@ -334,11 +350,13 @@ def rebuildCorpus(corpus, dbCur):
 		pmidList = [line.strip() for line in open(corpus)]
 
 	#Clear the corpus first
-	if dbCur is None:
+	if db is None:
 		print 'You need to have a valid DB connection first!'
 		return
 	else:
 		print 'Now rebuilding the thyroid cancer corpus'
+	
+	dbCur = db.cursor()
 
 	clear_sql = "delete from prj_mjkijcw2.tc_corpus"
 	dbCur.execute(clear_sql)
@@ -354,14 +372,16 @@ def rebuildCorpus(corpus, dbCur):
 
 	print len(pmidList), 'records inserted to the thyroid cancer corpus'
 
+	dbCur.close()
+
 	print 'Now fetching PubMed articles, from local DB first'
 
-	dbArtMap = getArticlesById(pmidList, 'pubmed', dbCur)
+	dbArtMap = getArticlesById(pmidList, 'pubmed', db)
 	noAbstractList = []
 	print len(dbArtMap), 'articles fetched from local database'
 
 #Insert
-	insert2DB(dbArtMap, dbCur)
+	insert2DB(dbArtMap, db)
 
 	print 'Now fetching directly from PubMed'
 	waitList = []
@@ -371,40 +391,20 @@ def rebuildCorpus(corpus, dbCur):
 
 	print len(waitList), 'articles to be fetched from PubMed'
 	artMap = getArticlesFromPubmed(waitList)
-	insert2DB(artMap, dbCur)
+	insert2DB(artMap, db)
 
+if __name__ == "__main__":
+	(corpus, dbConfig) = ReadConfig.config(sys.argv)
 
-#id = ['PMC100320', 'PMC100321']
-#pmid = ['21470165','23114422']
+	db = MySQLdb.connect(host=dbConfig['dbHost'], # your host, usually localhost
+		 user=dbConfig['dbUser'], # your username
+		  passwd=dbConfig['dbPass'] , # your password
+		  db=dbConfig['dbSchema'], 
+		  charset=dbConfig['dbCharset'], 
+		  use_unicode=dbConfig['dbUnicode']) # name of the data base
 
-#getArticlesById(pmid, 'pubmed')
+	print 'Database connected.'
 
+	rebuildCorpus(corpus, db)
 
-tc_corpus = 'thyroid_cancer_2013-12-03.txt'
-
-configParser = SafeConfigParser()
-configParser.read('config.ini')
-
-dbHost = configParser.get('db_connect', 'host')
-dbUser = configParser.get('db_connect', 'username')
-dbPass = configParser.get('db_connect', 'password')
-dbSchema = configParser.get('db_connect', 'schema')
-dbCharset = configParser.get('db_connect', 'charset')
-dbUnicode = configParser.get('db_connect', 'useUnicode')
-
-db = MySQLdb.connect(host=dbHost, # your host, usually localhost
-	 user=dbUser, # your username
-	  passwd=dbPass, # your password
-	  db=dbSchema, 
-	  charset=dbCharset, 
-	  use_unicode=dbUnicode) # name of the data base
-
-cur = db.cursor()
-
-print 'Database connected.'
-
-rebuildCorpus(tc_corpus, cur)
-
-cur.close()
-db.close()
-
+	db.close()
