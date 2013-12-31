@@ -314,7 +314,7 @@ def insert2DB(artMap, db, dbTables):
 		article = artMap[pmid]
 
 
-		insert_sql = 'REPLACE into ' + dbTables['CORPUS_TEXT_TABLE'] + """ (id_ext, text_title, text_body, xml, text_abstract, authors, date, article_type, mesh_terms, journal, affiliation) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s)"""
+		insert_sql = 'REPLACE into ' + dbTables['CORPUS_TEXT_TABLE'] + """ (id_ext, text_title, text_body, xml, text_abstract, authors, date, article_type, mesh_terms, journal, affiliation, text_raw) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, NULL)"""
 
 		try:
 			dbCur.execute(insert_sql, (article.id_ext, article.text_title, article.text_body, article.xml, article.text_abstract, article.authors, article.date, article.pubType, article.mesh_terms, article.journal, article.affiliation))
@@ -354,7 +354,7 @@ def rebuildCorpus(corpus, db, dbTables, email):
 		print 'You need to have a valid DB connection first!'
 		return
 	else:
-		print 'Now rebuilding the thyroid cancer corpus'
+		print 'Now rebuilding thet thyroid cancer corpus'
 	
 	dbCur = db.cursor()
 
