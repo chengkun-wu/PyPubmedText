@@ -341,7 +341,7 @@ def insert2DB(artMap, db, dbTables):
 
 	print 'Insert2DB finished!'
 
-def rebuildCorpus(corpus, db, dbTables, email):
+def rebuildCorpus(corpus, db, dbTables, email, useLocal):
 	pmidList = []
 
 	if type(corpus).__name__ == 'list':
@@ -374,14 +374,19 @@ def rebuildCorpus(corpus, db, dbTables, email):
 
 	dbCur.close()
 
-	print 'Now fetching PubMed articles, from local DB first'
+	print 'Now fetching PubMed articles'
 
-	dbArtMap = getArticlesById(pmidList, 'pubmed', db, dbTables)
-	noAbstractList = []
-	print len(dbArtMap), 'articles fetched from local database'
+	dbArtMap = {}
 
-#Insert
-	insert2DB(dbArtMap, db, dbTables)
+	if useLocal == 'Y':
+		print 'from local DB first'
+
+		dbArtMap = getArticlesById(pmidList, 'pubmed', db, dbTables)
+		
+		print len(dbArtMap), 'articles fetched from local database'
+
+		#Insert
+		insert2DB(dbArtMap, db, dbTables)
 
 	print 'Now fetching directly from PubMed'
 	waitList = []
@@ -394,7 +399,7 @@ def rebuildCorpus(corpus, db, dbTables, email):
 	insert2DB(artMap, db, dbTables)
 
 if __name__ == "__main__":
-	(corpus, dbConfig, dbTables,micsConfig) = ReadConfig.config(sys.argv)
+	(corpus, dbConfig, dbTables,miscConfig) = ReadConfig.config(sys.argv)
 
 	db = MySQLdb.connect(host=dbConfig['dbHost'], # your host, usually localhost
 		 user=dbConfig['dbUser'], # your username
@@ -405,6 +410,7 @@ if __name__ == "__main__":
 
 	print 'Database connected.'
 
-	rebuildCorpus(corpus, db, dbTables, micsConfig['email'])
+
+	rebuildCorpus(corpus, db, dbTables, miscConfig['email'], miscConfig['use_local'])
 
 	db.close()

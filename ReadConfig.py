@@ -44,6 +44,7 @@ def config(sysargv):
 
 	miscConfigs = {}
 	miscConfigs['email'] = configParser.get('misc', 'email')
+	miscConfigs['use_local'] = configParser.get('misc', 'use_local')
 
 	return opts.corpus, dbConfig, dbTables, miscConfigs
 
